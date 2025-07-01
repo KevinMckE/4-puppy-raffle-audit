@@ -77,7 +77,6 @@ contract ProofOfCodes is PuppyRaffleTest {
         assert(endingTotalFees < startingTotalFees);
 
         // We are also unable to withdraw any fees because of the require check
-        vm.prank(puppyRaffle.feeAddress());
         vm.expectRevert("PuppyRaffle: There are currently players active!");
         puppyRaffle.withdrawFees();
     }
