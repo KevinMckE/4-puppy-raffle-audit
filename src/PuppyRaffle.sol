@@ -11,6 +11,7 @@ import {Base64} from "lib/base64/base64.sol";
 /// @notice This project is to enter a raffle to win a cute dog NFT. The protocol should do the following:
 /// 1. Call the `enterRaffle` function with the following parameters:
 ///    1. `address[] participants`: A list of addresses that enter. You can use this to enter yourself multiple times, or yourself and a group of your friends.
+// @audit clarify business logic: the entrant must enter from different addresses correct?
 /// 2. Duplicate addresses are not allowed
 /// 3. Users are allowed to get a refund of their ticket & `value` if they call the `refund` function
 /// 4. Every X seconds, the raffle will be able to draw a winner and be minted a random puppy
@@ -18,6 +19,7 @@ import {Base64} from "lib/base64/base64.sol";
 contract PuppyRaffle is ERC721, Ownable {
     using Address for address payable;
 
+    // @audit informational: build recommendations say immutables should use SCREAMING_SNAKE_CASE
     uint256 public immutable entranceFee;
 
     address[] public players;
@@ -35,6 +37,7 @@ contract PuppyRaffle is ERC721, Ownable {
     mapping(uint256 => string) public rarityToName;
 
     // Stats for the common puppy (pug)
+    // @audit ? are these private/public identifiers correct for external access?
     string private commonImageUri = "ipfs://QmSsYRx3LpDAb1GZQm7zZ1AuHZjfbPkD6J7s9r41xu1mf8";
     uint256 public constant COMMON_RARITY = 70;
     string private constant COMMON = "common";
@@ -57,6 +60,7 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @param _entranceFee the cost in wei to enter the raffle
     /// @param _feeAddress the address to send the fees to
     /// @param _raffleDuration the duration in seconds of the raffle
+    // @ audit bug/informational totalSupply is never set for minting
     constructor(uint256 _entranceFee, address _feeAddress, uint256 _raffleDuration) ERC721("Puppy Raffle", "PR") {
         entranceFee = _entranceFee;
         feeAddress = _feeAddress;
@@ -76,13 +80,20 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @notice they have to pay the entrance fee * the number of players
     /// @notice duplicate entrants are not allowed
     /// @param newPlayers the list of players to enter the raffle
+    // @audit ? why is this newPlayers and not total players ? Possible logic issue with players / newPlayers order of operations
+    // @audit bug this doesn't include anything to ensure the current time is within the raffle duration, needs to check timestamp to ensure it's within the raffle duration
     function enterRaffle(address[] memory newPlayers) public payable {
+        // @audit guided ? were custom reerts a thing in 0.7.6 in Solidity?
+        // @audit guided ? what if players is 0?
         require(msg.value == entranceFee * newPlayers.length, "PuppyRaffle: Must send enough to enter raffle");
         for (uint256 i = 0; i < newPlayers.length; i++) {
             players.push(newPlayers[i]);
         }
 
         // Check for duplicates
+        // @audit bug ? this duplicate checking logic looks wonky, you could probably enter more times than once as long as there is another entrant in between your entries ?
+        // @audit bug ? players.length -1 should probably just be players.length ?
+        // @audit guided denial of service bug the more people in this array, the more gas this costs, so it could run through the gas and cause it to run out of gas
         for (uint256 i = 0; i < players.length - 1; i++) {
             for (uint256 j = i + 1; j < players.length; j++) {
                 require(players[i] != players[j], "PuppyRaffle: Duplicate player");
@@ -98,6 +109,7 @@ contract PuppyRaffle is ERC721, Ownable {
         require(playerAddress == msg.sender, "PuppyRaffle: Only the player can refund");
         require(playerAddress != address(0), "PuppyRaffle: Player already refunded, or is not active");
 
+        // @audit ? shouldn't this be based on entranceFee * number of players to ensure the correct amount is refunded ?
         payable(msg.sender).sendValue(entranceFee);
 
         players[playerIndex] = address(0);
@@ -120,22 +132,30 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @notice there must be at least 4 players, and the duration has occurred
     /// @notice the previous winner is stored in the previousWinner variable
     /// @dev we use a hash of on-chain data to generate the random numbers
+    // @audit bug on-chain data is not sufficient randomness for winner selection. This could be viewed externally and potentially used to exploit winner.
     /// @dev we reset the active players array after the winner is selected
     /// @dev we send 80% of the funds to the winner, the other 20% goes to the feeAddress
     function selectWinner() external {
         require(block.timestamp >= raffleStartTime + raffleDuration, "PuppyRaffle: Raffle not over");
         require(players.length >= 4, "PuppyRaffle: Need at least 4 players");
+        // @audit ? this winnerIndex selection logic looks wonky, will this actually return a correct winner ?
         uint256 winnerIndex =
             uint256(keccak256(abi.encodePacked(msg.sender, block.timestamp, block.difficulty))) % players.length;
         address winner = players[winnerIndex];
+        // @audit bug totalAmountCollected not calculated correctly, will be less than actual amount collected due to increased entrace fee based on entree #
         uint256 totalAmountCollected = players.length * entranceFee;
         uint256 prizePool = (totalAmountCollected * 80) / 100;
         uint256 fee = (totalAmountCollected * 20) / 100;
+        // @audit ? totalFees is set globally as 0, is withdrawFees storage logic and order of operations correct ?
         totalFees = totalFees + uint64(fee);
 
+        // @audit ? is totalSupply ever actually determined? Can't find it in DeployPuppyRaffle Contract deployment code
+        // @audit bug shouldn't this be the tokenId set after the minting?
         uint256 tokenId = totalSupply();
 
         // We use a different RNG calculate from the winnerIndex to determine rarity
+        // @audit bug addresses + block.difficulty is not a recommended source of randomness, 
+        // potentially exploitable by monitoring block.difficulty for lower values to try to get more rare NFTs
         uint256 rarity = uint256(keccak256(abi.encodePacked(msg.sender, block.difficulty))) % 100;
         if (rarity <= COMMON_RARITY) {
             tokenIdToRarity[tokenId] = COMMON_RARITY;
@@ -164,6 +184,7 @@ contract PuppyRaffle is ERC721, Ownable {
 
     /// @notice only the owner of the contract can change the feeAddress
     /// @param newFeeAddress the new address to send fees to
+    // @audit bug Access control issue, anyone can call changeFeeAddress as an external function
     function changeFeeAddress(address newFeeAddress) external onlyOwner {
         feeAddress = newFeeAddress;
         emit FeeAddressChanged(newFeeAddress);
@@ -186,6 +207,7 @@ contract PuppyRaffle is ERC721, Ownable {
 
     /// @notice this function will return the URI for the token
     /// @param tokenId the Id of the NFT
+    // @audit informational / bug ? what do virtual and override do in this function?
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
         require(_exists(tokenId), "PuppyRaffle: URI query for nonexistent token");
 
