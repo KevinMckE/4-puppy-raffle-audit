@@ -111,6 +111,7 @@ contract PuppyRaffle is ERC721, Ownable {
         require(playerAddress != address(0), "PuppyRaffle: Player already refunded, or is not active");
 
         // @audit ? shouldn't this be based on entranceFee * number of players to ensure the correct amount is refunded ?
+        // @audit guided Reentrancy
         payable(msg.sender).sendValue(entranceFee);
 
         players[playerIndex] = address(0);
