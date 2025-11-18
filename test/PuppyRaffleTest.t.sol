@@ -27,6 +27,14 @@ contract PuppyRaffleTest is Test {
     /// EnterRaffle    ///
     /////////////////////
 
+    function testDenialOfService() public {
+        for (uint256 i = 0; i < 1000; i++) {
+            address[] memory players = new address[](i);
+            puppyRaffle.enterRaffle{value: entranceFee * players.length}(players);
+        }
+    }
+
+
     function testCanEnterRaffle() public {
         address[] memory players = new address[](1);
         players[0] = playerOne;

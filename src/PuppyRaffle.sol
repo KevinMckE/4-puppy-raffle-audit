@@ -83,10 +83,11 @@ contract PuppyRaffle is ERC721, Ownable {
     // @audit ? why is this newPlayers and not total players ? Possible logic issue with players / newPlayers order of operations
     // @audit bug this doesn't include anything to ensure the current time is within the raffle duration, needs to check timestamp to ensure it's within the raffle duration
     function enterRaffle(address[] memory newPlayers) public payable {
-        // @audit guided ? were custom reerts a thing in 0.7.6 in Solidity?
+        // @audit guided ? were custom reverts a thing in 0.7.6 in Solidity?
         // @audit guided ? what if players is 0?
         require(msg.value == entranceFee * newPlayers.length, "PuppyRaffle: Must send enough to enter raffle");
         for (uint256 i = 0; i < newPlayers.length; i++) {
+        // @audit guided ? What resets the players array between rounds?
             players.push(newPlayers[i]);
         }
 
@@ -125,6 +126,8 @@ contract PuppyRaffle is ERC721, Ownable {
                 return i;
             }
         }
+        // @audit guided ? what if the player is at index 0?
+        // @audit guided if the player is at index 0, it'll return 0 and a player might think they are not active.
         return 0;
     }
 
