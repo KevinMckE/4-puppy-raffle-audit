@@ -137,6 +137,7 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @notice the previous winner is stored in the previousWinner variable
     /// @dev we use a hash of on-chain data to generate the random numbers
     // @audit bug on-chain data is not sufficient randomness for winner selection. This could be viewed externally and potentially used to exploit winner.
+    // fixes: Chainlink VRF, Commit Reveal Scheme
     /// @dev we reset the active players array after the winner is selected
     /// @dev we send 80% of the funds to the winner, the other 20% goes to the feeAddress
     function selectWinner() external {
@@ -151,6 +152,7 @@ contract PuppyRaffle is ERC721, Ownable {
         uint256 prizePool = (totalAmountCollected * 80) / 100;
         uint256 fee = (totalAmountCollected * 20) / 100;
         // @audit ? totalFees is set globally as 0, is withdrawFees storage logic and order of operations correct ?
+        // @audit guided overflow - difference between uint 64 and uint 256. this is how overflow, underflow, and precision loss exploits occur.
         totalFees = totalFees + uint64(fee);
 
         // @audit ? is totalSupply ever actually determined? Can't find it in DeployPuppyRaffle Contract deployment code

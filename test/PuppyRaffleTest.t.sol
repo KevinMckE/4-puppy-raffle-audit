@@ -250,6 +250,36 @@ contract PuppyRaffleTest is Test {
         console.log("ending contract balance: ", address(puppyRaffle).balance);
 
     }
+
+    function testSelectWinnerOverflow() public playersEntered {
+
+        vm.warp(block.timestamp + duration + 1);
+        vm.roll(block.number + 1);
+        puppyRaffle.selectWinner();
+        uint256 startingTotalFees = puppyRaffle.totalFees();
+
+        console.log("starting total fees: ", startingTotalFees);
+
+        uint256 playersNum = 89;
+        address[] memory players = new address[](playersNum);
+        for (uint256 i = 0; i < playersNum; i++) {
+            players[i] = address(i);
+        }
+        puppyRaffle.enterRaffle{value: entranceFee * playersNum}(players);
+
+        vm.warp(block.timestamp + duration + 1);
+        vm.roll(block.number + 1);
+        puppyRaffle.selectWinner();
+        uint256 endingTotalFees = puppyRaffle.totalFees();
+
+        console.log("ending total fees: ", endingTotalFees);
+
+        assert(endingTotalFees < startingTotalFees);
+
+    }
+
+
+
 }
 
 contract ReentrancyAttacker {
