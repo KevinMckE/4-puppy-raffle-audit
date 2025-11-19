@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.7.6;
 
+// @audit-info why are you using a floating pragma?
+// @audit-infor why are you using an old version of Solidity?
+
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
@@ -29,6 +32,7 @@ contract PuppyRaffle is ERC721, Ownable {
 
     // We do some storage packing to save gas
     address public feeAddress;
+    // @audit bug this should not be a uint64, too small
     uint64 public totalFees = 0;
 
     // mappings to keep track of token traits
@@ -38,6 +42,7 @@ contract PuppyRaffle is ERC721, Ownable {
 
     // Stats for the common puppy (pug)
     // @audit ? are these private/public identifiers correct for external access?
+    // @audit -gas should be constant!
     string private commonImageUri = "ipfs://QmSsYRx3LpDAb1GZQm7zZ1AuHZjfbPkD6J7s9r41xu1mf8";
     uint256 public constant COMMON_RARITY = 70;
     string private constant COMMON = "common";
@@ -60,9 +65,11 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @param _entranceFee the cost in wei to enter the raffle
     /// @param _feeAddress the address to send the fees to
     /// @param _raffleDuration the duration in seconds of the raffle
-    // @ audit bug/informational totalSupply is never set for minting
+    // @ audit bug/informational totalSupply is never set for minting in deploy contract
     constructor(uint256 _entranceFee, address _feeAddress, uint256 _raffleDuration) ERC721("Puppy Raffle", "PR") {
         entranceFee = _entranceFee;
+        // @audit-info check for zero address!
+        // input validation
         feeAddress = _feeAddress;
         raffleDuration = _raffleDuration;
         raffleStartTime = block.timestamp;
@@ -81,7 +88,8 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @notice duplicate entrants are not allowed
     /// @param newPlayers the list of players to enter the raffle
     // @audit ? why is this newPlayers and not total players ? Possible logic issue with players / newPlayers order of operations
-    // @audit bug this doesn't include anything to ensure the current time is within the raffle duration, needs to check timestamp to ensure it's within the raffle duration
+    // @audit ? this doesn't include anything to ensure the current time is within the raffle duration, needs to check timestamp to ensure it's within the raffle duration?
+    // @audit the duration is set in constructor during init
     function enterRaffle(address[] memory newPlayers) public payable {
         // @audit guided ? were custom reverts a thing in 0.7.6 in Solidity?
         // @audit guided ? what if players is 0?
@@ -95,6 +103,7 @@ contract PuppyRaffle is ERC721, Ownable {
         // @audit bug ? this duplicate checking logic looks wonky, you could probably enter more times than once as long as there is another entrant in between your entries ?
         // @audit bug ? players.length -1 should probably just be players.length ?
         // @audit guided denial of service bug the more people in this array, the more gas this costs, so it could run through the gas and cause it to run out of gas
+        // @audit - gas use cached version of players.length
         for (uint256 i = 0; i < players.length - 1; i++) {
             for (uint256 j = i + 1; j < players.length; j++) {
                 require(players[i] != players[j], "PuppyRaffle: Duplicate player");
@@ -115,6 +124,7 @@ contract PuppyRaffle is ERC721, Ownable {
         payable(msg.sender).sendValue(entranceFee);
 
         players[playerIndex] = address(0);
+        // @audit-low if an event can be manipulated, an event is missing, an event is wrong
         emit RaffleRefunded(playerAddress);
     }
 
@@ -193,6 +203,7 @@ contract PuppyRaffle is ERC721, Ownable {
         require(address(this).balance == uint256(totalFees), "PuppyRaffle: There are currently players active!");
         uint256 feesToWithdraw = totalFees;
         totalFees = 0;
+        // slither-disable-next-line arbitrary-send-eth
         (bool success,) = feeAddress.call{value: feesToWithdraw}("");
         require(success, "PuppyRaffle: Failed to withdraw fees");
     }
