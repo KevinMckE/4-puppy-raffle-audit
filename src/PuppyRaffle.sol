@@ -153,6 +153,8 @@ contract PuppyRaffle is ERC721, Ownable {
         uint256 fee = (totalAmountCollected * 20) / 100;
         // @audit ? totalFees is set globally as 0, is withdrawFees storage logic and order of operations correct ?
         // @audit guided overflow - difference between uint 64 and uint 256. this is how overflow, underflow, and precision loss exploits occur.
+        // @audit guided: Fixes, newer version of solidity, and bigger ints
+        // @audit guided unsafe cast of uint256 to uint64
         totalFees = totalFees + uint64(fee);
 
         // @audit ? is totalSupply ever actually determined? Can't find it in DeployPuppyRaffle Contract deployment code
@@ -162,6 +164,7 @@ contract PuppyRaffle is ERC721, Ownable {
         // We use a different RNG calculate from the winnerIndex to determine rarity
         // @audit bug addresses + block.difficulty is not a recommended source of randomness, 
         // potentially exploitable by monitoring block.difficulty for lower values to try to get more rare NFTs
+        // @audit guided, smart contract could potentially revert if this amount isn't what the contract wants
         uint256 rarity = uint256(keccak256(abi.encodePacked(msg.sender, block.difficulty))) % 100;
         if (rarity <= COMMON_RARITY) {
             tokenIdToRarity[tokenId] = COMMON_RARITY;
@@ -174,6 +177,10 @@ contract PuppyRaffle is ERC721, Ownable {
         delete players;
         raffleStartTime = block.timestamp;
         previousWinner = winner;
+
+        // @audit guided possible reentrancy?
+        // @audit guided ? what if the winner was a smart contract, could this revert?
+        // @audit the winner wouldn't get the money if their fallback was messed up
         (bool success,) = winner.call{value: prizePool}("");
         require(success, "PuppyRaffle: Failed to send prize pool to winner");
         _safeMint(winner, tokenId);
@@ -181,6 +188,8 @@ contract PuppyRaffle is ERC721, Ownable {
 
     /// @notice this function will withdraw the fees to the feeAddress
     function withdrawFees() external {
+        // @audit guided is it difficult to withdraw fees?
+        // @audit guided Mishandling of ETH
         require(address(this).balance == uint256(totalFees), "PuppyRaffle: There are currently players active!");
         uint256 feesToWithdraw = totalFees;
         totalFees = 0;
@@ -190,13 +199,14 @@ contract PuppyRaffle is ERC721, Ownable {
 
     /// @notice only the owner of the contract can change the feeAddress
     /// @param newFeeAddress the new address to send fees to
-    // @audit bug Access control issue, anyone can call changeFeeAddress as an external function
     function changeFeeAddress(address newFeeAddress) external onlyOwner {
         feeAddress = newFeeAddress;
+        // @audit guided ? are we missing events?
         emit FeeAddressChanged(newFeeAddress);
     }
 
     /// @notice this function will return true if the msg.sender is an active player
+    // @audit guided informational / gas severity - this function isn't used anywhere, a waste of gas
     function _isActivePlayer() internal view returns (bool) {
         for (uint256 i = 0; i < players.length; i++) {
             if (players[i] == msg.sender) {
